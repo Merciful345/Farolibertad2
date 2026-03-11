@@ -6,7 +6,7 @@ import { EstadoBadge } from "./EstadoBadge";
 import { TipoSenalBadge } from "./TipoSenalBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Radio } from "lucide-react";
-import type { Senal } from "@/types";
+import type { Senal, TipoSenal } from "@/types";
 
 interface TablaSeñalesProps {
   senales: Senal[];
@@ -43,7 +43,7 @@ export function TablaSeñales({ senales }: TablaSeñalesProps) {
               <td className="px-4 py-3 font-mono text-xs text-gray-500">{senal.codigo}</td>
               <td className="px-4 py-3 font-medium text-gray-900">{senal.nombre}</td>
               <td className="px-4 py-3">
-                <TipoSenalBadge tipo={senal.tipo} />
+                <TipoSenalBadge tipo={senal.categoria?.nombre as TipoSenal} />
               </td>
               <td className="px-4 py-3">
                 <EstadoBadge estado={senal.estado} />
