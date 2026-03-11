@@ -6,7 +6,6 @@ import { PrioridadBadge } from "./PrioridadBadge";
 import { EstadoNovedadBadge } from "./EstadoNovedadBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AlertCircle } from "lucide-react";
-import { CATEGORIAS_MAP } from "@/constants/categorias-novedades";
 import { formatFechaHora } from "@/lib/utils";
 import type { Novedad } from "@/types";
 
@@ -46,7 +45,7 @@ export function TablaNovedades({ novedades }: TablaNovedadesProps) {
                 {novedad.senal?.nombre ?? novedad.senal_id}
               </td>
               <td className="px-4 py-3 text-gray-600">
-                {CATEGORIAS_MAP[novedad.categoria]?.label ?? novedad.categoria}
+                {novedad.categoria?.label ?? "—"}
               </td>
               <td className="px-4 py-3">
                 <PrioridadBadge prioridad={novedad.prioridad} />
