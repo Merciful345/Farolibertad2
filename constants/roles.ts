@@ -38,8 +38,8 @@ export const ROLES: Record<RolUsuario, RolConfig> = {
       gestionarUsuarios: true,
     },
   },
-  inspector: {
-    label: "Inspector",
+  inspector_regional: {
+    label: "Inspector Regional",
     descripcion: "Puede registrar y gestionar novedades, y editar señales",
     color: "bg-orange-100 text-orange-800",
     permisos: {
@@ -56,8 +56,8 @@ export const ROLES: Record<RolUsuario, RolConfig> = {
       gestionarUsuarios: false,
     },
   },
-  operador: {
-    label: "Operador",
+  encargado_estacion: {
+    label: "Encargado de Estación",
     descripcion: "Puede registrar novedades y consultar el mapa",
     color: "bg-blue-100 text-blue-800",
     permisos: {
@@ -74,8 +74,8 @@ export const ROLES: Record<RolUsuario, RolConfig> = {
       gestionarUsuarios: false,
     },
   },
-  visualizador: {
-    label: "Visualizador",
+  observador: {
+    label: "Observador",
     descripcion: "Solo lectura: puede ver el mapa, señales y novedades",
     color: "bg-gray-100 text-gray-700",
     permisos: {
