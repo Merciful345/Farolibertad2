@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
+import { Footer } from "@/components/layout/Footer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex h-screen flex-col overflow-hidden bg-[#0f1923]">
       <TopNav />
       <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>
+      <Footer />
     </div>
   );
 }
