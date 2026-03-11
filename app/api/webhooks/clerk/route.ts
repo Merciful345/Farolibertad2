@@ -3,11 +3,6 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Cliente con service role — bypasea RLS para operaciones del webhook
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 interface ClerkEmailAddress {
   email_address: string;
@@ -35,6 +30,11 @@ function getPrimaryEmail(data: ClerkUserData): string {
 }
 
 export async function POST(req: Request) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
   if (!WEBHOOK_SECRET) {
     return NextResponse.json({ error: "CLERK_WEBHOOK_SECRET no configurado" }, { status: 500 });
