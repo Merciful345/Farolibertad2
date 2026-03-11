@@ -62,13 +62,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
 
   // Resolve categoria slug → ID
+  const categoriaSlug = String(body.categoria ?? "").trim().toLowerCase();
   const { data: catRow } = await supabase
     .from("categorias_novedades")
     .select("id")
-    .eq("nombre", body.categoria)
+    .eq("nombre", categoriaSlug)
     .single();
 
-  if (!catRow) return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
+  if (!catRow) return NextResponse.json({ error: `Categoría inválida: "${categoriaSlug}"` }, { status: 400 });
 
   // Resolve opcion slug → ID (optional)
   let opcion_id: number | null = null;

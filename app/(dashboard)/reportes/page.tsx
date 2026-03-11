@@ -9,7 +9,7 @@ import type { Senal, Novedad } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TipoReporte = "novedades" | "senales" | "ficha";
+type TipoReporte = "novedades" | "senales" | "ficha" | "importar";
 
 interface FiltrosNov {
   desde:     string;
@@ -771,6 +771,184 @@ function ReportesInner() {
     setBuscado(false);
   }, [tipo]);
 
+  // ─── Import state ──────────────────────────────────────────────────────────
+  interface FilaImport {
+    id:          string;
+    senal_codigo: string;
+    categoria:   string;
+    opcion:      string;
+    descripcion: string;
+    prioridad:   string;
+    estado: "idle" | "loading" | "ok" | "error";
+    msg:    string;
+  }
+
+  const [importFilas,    setImportFilas]    = useState<FilaImport[]>([]);
+  const [importando,     setImportando]     = useState(false);
+  const [importCsvError, setImportCsvError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  function descargarPlantillaNovedades() {
+    const categorias = ["cableado","visibilidad","vientos","tensores","caja_estanca","escaleras","guarda_hombre","bateria","puertas","vidrios","paneles","optico","caracteristica_diurna","caracteristica_nocturna","estructura"];
+    const prioridades = ["critica","alta","media","baja"];
+    const ejemplos = [
+      ["FAR-0042","cableado","corte_cable","Cable de alimentación cortado en el tramo norte","alta"],
+      ["FAR-0043","bateria","","Batería descargada al 10%","media"],
+    ];
+
+    const maxRows = Math.max(categorias.length, ejemplos.length);
+    const dataRows = Array.from({ length: maxRows }, (_, i) => {
+      const ej  = ejemplos[i];
+      const cat = categorias[i] ?? "";
+      const pri = prioridades[i] ?? "";
+      const dataCells = ej
+        ? `<td class="ejemplo">${ej[0]}</td><td class="ejemplo">${ej[1]}</td><td class="ejemplo">${ej[2]}</td><td class="ejemplo">${ej[3]}</td><td class="ejemplo">${ej[4]}</td>`
+        : `<td></td><td></td><td></td><td></td><td></td>`;
+      return `<tr>${dataCells}<td></td><td class="ref-item">${cat}</td><td class="ref-item">${pri}</td></tr>`;
+    }).join("");
+
+    const html = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<style>
+  body { font-family: Calibri, sans-serif; font-size: 11pt; }
+  .titulo { background:#0f2d4e; color:white; font-weight:bold; font-size:14pt; padding:8px 12px; }
+  .subtitulo { background:#1d3045; color:#7ab3d4; font-size:9pt; padding:4px 12px; }
+  .header { background:#1a324d; color:white; font-weight:bold; font-size:10pt; border:1px solid #2d4a6b; padding:6px 10px; }
+  .ejemplo { background:#e8f4e8; border:1px solid #b3d9b3; padding:5px 10px; color:#1a5c1a; font-size:10pt; }
+  .ref-header { background:#2d4a6b; color:white; font-weight:bold; padding:5px 10px; font-size:10pt; }
+  .ref-item { background:#f5f8fc; border:1px solid #dde6f0; padding:4px 10px; font-family:Consolas,monospace; font-size:9pt; }
+  .nota { color:#666; font-style:italic; font-size:9pt; padding:4px 10px; }
+</style>
+</head>
+<body>
+<table>
+  <tr>
+    <td colspan="5" class="titulo">FAROLIBERTAD — Plantilla de Importación de Novedades</td>
+    <td></td>
+    <td colspan="2" class="titulo" style="background:#1a3a5c;font-size:11pt">Valores de Referencia</td>
+  </tr>
+  <tr>
+    <td colspan="5" class="subtitulo">Ministerio de Defensa · Sistema de Señales Marítimas · República Argentina</td>
+    <td></td>
+    <td class="ref-header">Columna: categoria</td>
+    <td class="ref-header">Columna: prioridad</td>
+  </tr>
+  <tr><td colspan="5" style="padding:4px"></td><td></td><td></td><td></td></tr>
+  <tr>
+    <td class="header">senal_codigo</td>
+    <td class="header">categoria</td>
+    <td class="header">opcion</td>
+    <td class="header">descripcion</td>
+    <td class="header">prioridad</td>
+    <td></td><td></td><td></td>
+  </tr>
+  ${dataRows}
+  <tr><td colspan="5" class="nota">↑ Reemplazá los ejemplos con tus datos. El campo "opcion" puede dejarse vacío.</td><td></td><td></td><td></td></tr>
+</table>
+</body></html>`;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a"); a.href = url; a.download = "plantilla_novedades.xls"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importarNovedadesCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    setImportCsvError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const texto  = (ev.target?.result as string).replace(/^\uFEFF/, "");
+        const lineas = texto.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
+        if (lineas.length < 2) { setImportCsvError("El archivo no tiene filas de datos."); return; }
+
+        // Find header row (template has title rows before actual headers)
+        const headerIdx = lineas.findIndex((l) =>
+          l.toLowerCase().replace(/"/g, "").includes("senal_codigo")
+        );
+        if (headerIdx === -1) { setImportCsvError("No se encontró la fila de encabezados (senal_codigo)."); return; }
+
+        const enc = parseCSVLine(lineas[headerIdx]).map((h) => h.toLowerCase());
+        const idx = (n: string) => enc.indexOf(n);
+
+        const nuevas: FilaImport[] = lineas.slice(headerIdx + 1).map((linea) => {
+          const cols = parseCSVLine(linea);
+          const get  = (i: number) => cols[i] ?? "";
+          return {
+            id:           crypto.randomUUID(),
+            senal_codigo: get(idx("senal_codigo")),
+            categoria:    get(idx("categoria")),
+            opcion:       get(idx("opcion")),
+            descripcion:  get(idx("descripcion")),
+            prioridad:    get(idx("prioridad")) || "media",
+            estado: "idle" as const,
+            msg: "",
+          };
+        }).filter((f) => f.senal_codigo && f.categoria);
+
+        if (nuevas.length === 0) { setImportCsvError("No se encontraron filas válidas."); return; }
+        setImportFilas(nuevas);
+      } catch {
+        setImportCsvError("No se pudo leer el archivo CSV.");
+      }
+      if (importInputRef.current) importInputRef.current.value = "";
+    };
+    reader.readAsText(file, "UTF-8");
+  }
+
+  async function crearNovedades() {
+    const pendientes = importFilas.filter((f) => f.estado !== "ok");
+    if (pendientes.length === 0) return;
+    setImportando(true);
+
+    // Resolver códigos de señal en paralelo
+    const senalMap = new Map<string, string>();
+    await Promise.all(
+      [...new Set(pendientes.map((f) => f.senal_codigo))].map(async (codigo) => {
+        const res  = await fetch(`/api/senales?q=${encodeURIComponent(codigo)}`);
+        const json = await res.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const match = (json.data ?? []).find((s: any) => s.codigo.toLowerCase() === codigo.toLowerCase());
+        if (match) senalMap.set(codigo, match.id);
+      })
+    );
+
+    const resultados = await Promise.allSettled(
+      pendientes.map((f) => {
+        const senal_id = senalMap.get(f.senal_codigo);
+        if (!senal_id) return Promise.reject(new Error(`Señal "${f.senal_codigo}" no encontrada`));
+        return fetch("/api/novedades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senal_id,
+            categoria:   f.categoria,
+            opcion:      f.opcion || undefined,
+            descripcion: f.descripcion || null,
+            prioridad:   f.prioridad,
+          }),
+        }).then(async (res) => {
+          if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? "Error"); }
+          return f.id;
+        });
+      })
+    );
+
+    const resMap = new Map(pendientes.map((f, i) => [f.id, resultados[i]]));
+    setImportFilas((fs) => fs.map((f) => {
+      if (f.estado === "ok") return f;
+      const r = resMap.get(f.id);
+      if (!r) return f;
+      if (r.status === "fulfilled") return { ...f, estado: "ok" as const, msg: "Creada correctamente" };
+      return { ...f, estado: "error" as const, msg: r.reason?.message ?? "Error" };
+    }));
+    setImportando(false);
+  }
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -783,7 +961,7 @@ function ReportesInner() {
           <p className="text-xs text-slate-500 mt-0.5">Generá y descargá reportes en PDF o Excel (CSV)</p>
         </div>
 
-        {tipo !== "ficha" ? (
+        {tipo !== "ficha" && tipo !== "importar" ? (
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
@@ -817,7 +995,7 @@ function ReportesInner() {
 
       {/* Type selector */}
       <div className="flex gap-2">
-        {(["novedades", "senales", "ficha"] as TipoReporte[]).map((t) => (
+        {(["novedades", "senales", "ficha", "importar"] as TipoReporte[]).map((t) => (
           <button
             key={t}
             onClick={() => setTipo(t)}
@@ -827,13 +1005,13 @@ function ReportesInner() {
                 : "text-slate-400 hover:bg-[#1d3045] hover:text-slate-200 border border-transparent"
             }`}
           >
-            {t === "novedades" ? "Avisos / Novedades" : t === "senales" ? "Señales" : "Ficha de Señal"}
+            {t === "novedades" ? "Avisos / Novedades" : t === "senales" ? "Señales" : t === "ficha" ? "Ficha de Señal" : "Importar"}
           </button>
         ))}
       </div>
 
       {/* ── Tabular filters ────────────────────────────────────────────────── */}
-      {tipo !== "ficha" && (
+      {tipo !== "ficha" && tipo !== "importar" && (
         <div className="rounded-lg border border-[#243d57] bg-[#162233] p-4">
           <div className="flex items-center gap-2 mb-4">
             <Filter className="h-4 w-4 text-slate-400" />
@@ -1071,7 +1249,101 @@ function ReportesInner() {
       )}
 
       {/* ── Tabular preview ──────────────────────────────────────────────────── */}
-      {tipo !== "ficha" && buscado && (
+      {/* ── Tab Importar ───────────────────────────────────────────────────── */}
+      {tipo === "importar" && (
+        <div className="flex flex-col gap-4">
+
+          {/* Instrucciones + botones */}
+          <div className="rounded-lg border border-[#243d57] bg-[#162233] p-5">
+            <p className="font-mono text-xs text-[#4a9edd] uppercase tracking-wider mb-3">Importar novedades desde CSV</p>
+            <p className="text-sm text-slate-400 mb-4">
+              Descargá la plantilla, completala con los datos y subila para crear múltiples novedades de una vez.
+              El código de señal debe coincidir exactamente con el número nacional (ej: <span className="font-mono text-slate-300">FAR-0042</span>).
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="secondary" onClick={descargarPlantillaNovedades}>
+                <FileDown className="h-4 w-4" /> Descargar plantilla
+              </Button>
+              <Button variant="secondary" onClick={() => importInputRef.current?.click()} disabled={importando}>
+                <FileDown className="h-4 w-4 rotate-180" /> Importar CSV
+              </Button>
+              <input ref={importInputRef} type="file" accept=".csv" className="hidden" onChange={importarNovedadesCSV} />
+              {importFilas.length > 0 && (
+                <Button onClick={crearNovedades} loading={importando}>
+                  Crear {importFilas.filter((f) => f.estado !== "ok").length} novedad{importFilas.filter((f) => f.estado !== "ok").length !== 1 ? "es" : ""}
+                </Button>
+              )}
+            </div>
+            {importCsvError && (
+              <p className="mt-3 text-sm text-red-400">{importCsvError}</p>
+            )}
+          </div>
+
+          {/* Referencia de categorías */}
+          <div className="rounded-lg border border-[#243d57] bg-[#162233] p-5">
+            <p className="font-mono text-xs text-[#4a9edd] uppercase tracking-wider mb-3">Valores válidos para el CSV</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <p className="text-slate-300 font-medium mb-1">Columna <span className="font-mono">categoria</span></p>
+                <div className="flex flex-wrap gap-1">
+                  {["cableado","visibilidad","vientos","tensores","caja_estanca","escaleras","guarda_hombre","bateria","puertas","vidrios","paneles","optico","caracteristica_diurna","caracteristica_nocturna","estructura"].map((c) => (
+                    <span key={c} className="font-mono bg-[#1d3045] text-slate-400 px-1.5 py-0.5 rounded">{c}</span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-slate-300 font-medium mb-1">Columna <span className="font-mono">prioridad</span></p>
+                <div className="flex flex-wrap gap-1">
+                  {["critica","alta","media","baja"].map((p) => (
+                    <span key={p} className="font-mono bg-[#1d3045] text-slate-400 px-1.5 py-0.5 rounded">{p}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Previsualización de filas */}
+          {importFilas.length > 0 && (
+            <div className="rounded-lg border border-[#243d57] overflow-hidden">
+              <div className="bg-[#1d3045] px-4 py-2 flex items-center justify-between">
+                <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">{importFilas.length} fila{importFilas.length !== 1 ? "s" : ""} cargadas</span>
+                <div className="flex gap-3 text-xs">
+                  <span className="text-green-400">{importFilas.filter((f) => f.estado === "ok").length} ok</span>
+                  <span className="text-red-400">{importFilas.filter((f) => f.estado === "error").length} con error</span>
+                </div>
+              </div>
+              <table className="min-w-full text-xs">
+                <thead className="bg-[#162233]">
+                  <tr>
+                    {["Señal (código)", "Categoría", "Opción", "Prioridad", "Descripción", "Estado"].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left text-slate-500 uppercase tracking-wider font-semibold">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1d3045]">
+                  {importFilas.map((f) => (
+                    <tr key={f.id} className={`transition-colors ${f.estado === "ok" ? "bg-green-500/5" : f.estado === "error" ? "bg-red-500/5" : "hover:bg-[#1d3045]/40"}`}>
+                      <td className="px-3 py-2 font-mono text-[#4a9edd]">{f.senal_codigo}</td>
+                      <td className="px-3 py-2 text-slate-400">{f.categoria}</td>
+                      <td className="px-3 py-2 text-slate-500">{f.opcion || "—"}</td>
+                      <td className="px-3 py-2"><PrioridadBadge p={f.prioridad} /></td>
+                      <td className="px-3 py-2 text-slate-400 max-w-xs truncate">{f.descripcion || "—"}</td>
+                      <td className="px-3 py-2">
+                        {f.estado === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+                        {f.estado === "ok"      && <span className="text-green-400">✓ {f.msg}</span>}
+                        {f.estado === "error"   && <span className="text-red-400">✗ {f.msg}</span>}
+                        {f.estado === "idle"    && <span className="text-slate-600">Pendiente</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tipo !== "ficha" && tipo !== "importar" && buscado && (
         <div className="rounded-lg border border-[#243d57] overflow-hidden">
           {datos.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-sm text-slate-500">
@@ -1139,6 +1411,28 @@ function ReportesInner() {
       )}
     </div>
   );
+}
+
+// ─── CSV parser (handles quoted fields with embedded commas) ──────────────────
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
 }
 
 // ─── PDF helpers ──────────────────────────────────────────────────────────────

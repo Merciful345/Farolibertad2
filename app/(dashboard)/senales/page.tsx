@@ -126,9 +126,14 @@ function SeñalesContent() {
           </div>
           <Button type="submit" variant="secondary">Buscar</Button>
         </form>
-        <Link href="/senales/nueva">
-          <Button><Plus className="h-4 w-4" /> Nueva señal</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/senales/masivo">
+            <Button variant="secondary"><Plus className="h-4 w-4" /> Carga masiva</Button>
+          </Link>
+          <Link href="/senales/nueva">
+            <Button><Plus className="h-4 w-4" /> Nueva señal</Button>
+          </Link>
+        </div>
       </div>
 
       {/* Table */}
